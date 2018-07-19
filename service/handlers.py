@@ -1,23 +1,24 @@
-import json
-
-import requests
-
-
-API_URLS = {
-    'github': 'https://api.github.com/users/{username}',
-    'bitbucket': 'https://api.bitbucket.org/1.0/users/{username}',
-}
-# Note: The bitbucket endpoint is deprecated. The 2.0 endpoint lists public accounts as inaccessible "team accounts"
+from service.models import (
+    BitbucketProfile,
+    ConsolidatedProfile,
+    GithubProfile,
+)
 
 
-def get_user_profile(sitename, username):
-    """ Make a GET request to the given site's user endpoint and returns a dict of the response
+def handle_get_profile(github_username, bitbucket_username):
+    """ Handler for get profile.
 
-    :param sitename: The site of the api to request
-    :type sitename: str
-    :param username: The username of the profile
-    :type username: str
+    :param github_username: username of a github user
+    :type github_username: str
+    :param bitbucket_username: username of a bitbucket user
+    :type bitbucket_username: str
+    :return: consolidated user info for both profiles
+    :rtype: dict
     """
-    headers = {'content-type': 'application/json'}
-    response = requests.get(API_URLS[sitename].format(username=username), headers=headers)
-    return json.loads(response.text)
+    github_profile = GithubProfile(github_username)
+    github_profile.get_all_data()
+    bitbucket_profile = BitbucketProfile(bitbucket_username)
+    bitbucket_profile.get_all_data()
+    profile = ConsolidatedProfile(github_profile, bitbucket_profile)
+
+    return profile.dict

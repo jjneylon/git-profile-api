@@ -1,8 +1,8 @@
 import json
 
-from flask import abort, Blueprint, request, Response
+from flask import Blueprint, request, Response
 
-from service import handlers
+from service.handlers import handle_get_profile
 
 
 api_blueprint = Blueprint('api', __name__)
@@ -10,12 +10,12 @@ api_blueprint = Blueprint('api', __name__)
 
 @api_blueprint.route('/api/profile', methods=['GET'])
 def get_profile():
+    """ Endpoint for a consolidated profile resource """
     try:
         github_username = request.args['github']
         bitbucket_username = request.args['bitbucket']
     except IndexError as exc:
-        return Response('No {} in request params'.format(exc), status=400)
+        return Response(json.dumps({"error": "No {} in request params".format(exc)}), status=400)
 
-    github_response = handlers.get_user_profile('github', github_username)
-    bitbucket_response = handlers.get_user_profile('bitbucket', bitbucket_username)
-    return Response('{}', status=200)
+    profile_dict = handle_get_profile(github_username, bitbucket_username)
+    return Response(json.dumps(profile_dict), status=200)
