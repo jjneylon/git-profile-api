@@ -17,8 +17,8 @@ def handle_get_profile(github_username, bitbucket_username):
     """
     github_profile = GithubProfile(github_username)
     github_profile.get_all_data()
+
     bitbucket_profile = BitbucketProfile(bitbucket_username)
-    bitbucket_profile.get_all_data()
     profile = ConsolidatedProfile(github_profile, bitbucket_profile)
 
     return profile.dict
