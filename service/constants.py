@@ -1,5 +1,5 @@
 GITHUB_BASE_URL = 'https://api.github.com'
-BITBUCKET_BASE_URL = 'https://api.bitbucket.org/1.0'
+BITBUCKET_BASE_URL = 'https://api.bitbucket.org/2.0'
 GITHUB_PROFILE_URL = GITHUB_BASE_URL + '/users/{username}'
 BITBUCKET_PROFILE_URL = BITBUCKET_BASE_URL + '/users/{username}'
 GITHUB_REPOS_URL = GITHUB_BASE_URL + '/users/{username}/repos'
