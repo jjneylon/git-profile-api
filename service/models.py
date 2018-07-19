@@ -59,10 +59,10 @@ class BitbucketProfile(Profile):
         while True:
             response = requests.get(url, headers=self.default_headers)
             response_body = json.loads(response.text)
-            repos = response_body.get('values', response_body)
+            repos = response_body['values']
             self.repos += repos
-            if self.pagelen and len(self.repos) <= response_body.get('size'):
-                url = repos.get('next')
+            if self.pagelen and len(self.repos) < response_body['size']:
+                url = repos['next']
             else:
                 break
 
