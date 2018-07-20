@@ -6,8 +6,6 @@ from service import constants
 
 class Profile:
     """ Base Profile class with shared logic for github and bitbucket """
-    PROFILE_URL = None
-
     def __init__(self, username, page_len=50):
         self.username = username
         self.page_len = page_len
@@ -20,7 +18,6 @@ class Profile:
         self.total_stars_received_count = 0
         self.total_stars_given_count = 0
         self.total_open_issues_count = 0
-        self.total_repo_commit_count = 0
         self.total_size = 0
         self.languages_used = set()
         self.languages_used_count = 0
@@ -32,55 +29,13 @@ class Profile:
         """ Headers to pass to all requests
 
         Content-type for all requests is application/json
-        The Accept header must be set to a preview in order to show topics
         """
         return {
             'content-type': 'application/json',
-            'accept': 'application/vnd.github.mercy-preview+json'
         }
-
-    @property
-    def pagination_str(self):
-        raise NotImplementedError
-
-    @property
-    def repos_url(self):
-        raise NotImplementedError
-
-    @property
-    def stars_received_url(self):
-        raise NotImplementedError
-
-    def get_user_profile(self):
-        """ Retrieves the user profile from the api """
-        url = self.PROFILE_URL.format(username=self.username)
-        response = requests.get(url, headers=self.default_headers)
-        self.user_profile = json.loads(response.text)
-
-    def get_repos(self):
-        """ Retrieves repo data for the user. Must be overridden """
-        raise NotImplementedError
-
-    def get_paginated_list(self, start_url):
-        raise NotImplementedError
-
-    def get_paginated_count(self, start_url):
-        raise NotImplementedError
-
-    def collect_data(self):
-        raise NotImplementedError
-
-    def get_all_data(self):
-        """ Retrieves all data """
-        self.get_user_profile()
-        self.repos = self.get_paginated_list(self.repos_url)
-        self.total_stars_received_count = self.get_paginated_count(self.stars_received_url)
-        self.collect_data()
 
 
 class GithubProfile(Profile):
-    PROFILE_URL = constants.GITHUB_PROFILE_URL
-
     @property
     def headers(self):
         """ Headers to pass to all requests
@@ -96,6 +51,10 @@ class GithubProfile(Profile):
         return '?per_page={page_len}'
 
     @property
+    def profile_url(self):
+        return constants.GITHUB_PROFILE_URL
+
+    @property
     def repos_url(self):
         return self.user_profile['repos_url']
 
@@ -103,34 +62,47 @@ class GithubProfile(Profile):
     def stars_received_url(self):
         return self.user_profile['starred_url'].replace('{/owner}{/repo}', '')
 
-    def get_repos(self):
-        """ Retrieves the repo data for the github user """
-        url = self.user_profile['repos_url']
-        response = requests.get(url, headers=self.default_headers)
-        repos = json.loads(response.text)
-        self.repos = repos
+    def get_user_profile(self):
+        """ Retrieves the user profile from the api """
+        url = self.profile_url.format(username=self.username)
+        response = requests.get(url, headers=self.headers)
+        self.user_profile = json.loads(response.text)
 
     def get_paginated_count(self, start_url):
+        """ Sends a head request to get a count of resources at a endpoint
+
+        :param start_url: url of the first page of an endpoint
+        :type start_url: str
+        """
         url = start_url + self.pagination_str.format(page_len=1)
         response = requests.head(url)
         last = response.links.get('last', {}).get('url')
         return int(last.split('page=')[-1]) if last else None
 
     def get_paginated_list(self, start_url):
+        """ Sends a get request to get a full list of resources at an endpoint. Loops through each page
+
+        :param start_url: url of the first page of an endpoint
+        :type start_url: str
+        """
         url = start_url + self.pagination_str.format(page_len=self.page_len)
         paginated_list = []
         while True:
-            response = requests.get(url, headers=self.default_headers)
+            response = requests.get(url, headers=self.headers)
             paginated_list += json.loads(response.text)
             url = response.links.get('next', {}).get('url')
             if not url:
                 break
         return paginated_list
 
-    def collect_data(self):
+    def get_all_data(self):
+        """ Retrieves all data. Loops through each repo to get counts """
+        self.get_user_profile()
+        self.repos = self.get_paginated_list(self.repos_url)
+        self.total_stars_received_count = self.get_paginated_count(self.stars_received_url)
+
         self.total_repo_count = len(self.repos)
         self.total_follower_count = self.user_profile['followers']
-        self.total_repo_commit_count = 0
         for repo in self.repos:
             self.total_watcher_count += repo['watchers_count']
             self.total_stars_given_count += repo['stargazers_count']
@@ -145,35 +117,107 @@ class GithubProfile(Profile):
 
 
 class BitbucketProfile(Profile):
-    PROFILE_URL = constants.BITBUCKET_PROFILE_URL
-
     @property
     def headers(self):
         return self.default_headers
 
-    def get_repos(self):
-        """ Retrieves the repo data for the bitbucket user. Data is paginated, so we need to loop through each page """
-        self.repos = []
-        url = self.user_profile['repositories']['href'] + '?pagelen={}'.format(self.page_len)
+    @property
+    def pagination_str(self):
+        return '?pagelen={page_len}'
+
+    @property
+    def profile_url(self):
+        return constants.BITBUCKET_PROFILE_URL
+
+    @property
+    def teams_url(self):
+        return constants.BITBUCKET_TEAMS_URL
+
+    @property
+    def repos_url(self):
+        return self.user_profile['links']['repositories']['href']
+
+    @property
+    def followers_url(self):
+        return self.user_profile['links']['followers']['href']
+
+    def get_user_profile(self):
+        """ Retrieves the user profile from the api
+
+        If the user is a "team account", then it will try the teams url
+        """
+        url = self.profile_url.format(username=self.username)
+        response = requests.get(url, headers=self.headers)
+        response_body = response.json()
+        if response_body.get('error', {}).get('message') == '{} is a team account'.format(self.username):
+            url = self.teams_url.format(username=self.username)
+            response = requests.get(url, headers=self.headers)
+            response_body = response.json()
+
+        self.user_profile = response_body
+
+    def get_paginated_count(self, start_url):
+        """ Sends a get request to get a count of resources at a endpoint
+
+        :param start_url: url of the first page of an endpoint
+        :type start_url: str
+        """
+        url = start_url + self.pagination_str.format(page_len=0)
+        response = requests.get(url, headers=self.headers)
+        response_body = response.json()
+        return response_body['size']
+
+    def get_paginated_list(self, start_url):
+        """ Sends a get request to get a full list of resources at an endpoint. Loops through each page
+
+        :param start_url: url of the first page of an endpoint
+        :type start_url: str
+        """
+        url = start_url + self.pagination_str.format(page_len=self.page_len)
+        paginated_list = []
         while True:
             response = requests.get(url, headers=self.headers)
             response_body = json.loads(response.text)
-            repos = response_body['values']
-            self.repos += repos
-            if self.page_len and len(self.repos) < response_body['size']:
-                url = repos['next']
-            else:
+            paginated_list += response_body['values']
+            url = response_body.get('next')
+            if not url:
                 break
+
+        return paginated_list
+
+    def get_all_data(self):
+        """ Retrieves all data. Loops through each repo and makes additional requests to get counts """
+        self.get_user_profile()
+        self.repos = self.get_paginated_list(self.repos_url)
+        self.total_follower_count = self.get_paginated_count(self.followers_url)
+        self.total_repo_count = len(self.repos)
+
+        for repo in self.repos:
+            self.total_watcher_count += self.get_paginated_count(repo['links']['watchers']['href'])
+            self.total_size += repo['size']
+
+            issues_link = repo['links'].get('issues')
+            if issues_link:
+                self.total_open_issues_count += self.get_paginated_count(issues_link)
+            if repo['language']:
+                self.languages_used = self.languages_used.union({repo['language']})
+
+        self.languages_used_count = len(self.languages_used)
 
 
 class ConsolidatedProfile:
+    """ Class containing logic to consolidate the attributes of two profiles """
     def __init__(self, github_profile, bitbucket_profile):
         self.github_profile = github_profile
         self.bitbucket_profile = bitbucket_profile
 
     @property
     def dict(self):
-        """ A dictionary of all data consolidated from both profiles """
+        """ A dictionary of all data consolidated from both profiles.
+
+        Loops through count attributes and adds them.
+        Loops through set attributes and converts to a list of their union
+        """
         response_dict = {
             'github_username': self.github_profile.username,
             'bitbucket_username': self.bitbucket_profile.username,
@@ -185,7 +229,6 @@ class ConsolidatedProfile:
             'total_stars_received_count',
             'total_stars_given_count',
             'total_open_issues_count',
-            'total_repo_commit_count',
             'total_size',
             'languages_used_count',
             'repo_topics_count',
