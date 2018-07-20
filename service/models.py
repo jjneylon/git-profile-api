@@ -66,7 +66,7 @@ class GithubProfile(Profile):
         """ Retrieves the user profile from the api """
         url = self.profile_url.format(username=self.username)
         response = requests.get(url, headers=self.headers)
-        self.user_profile = json.loads(response.text)
+        self.user_profile = response.json()
 
     def get_paginated_count(self, start_url):
         """ Sends a head request to get a count of resources at a endpoint
@@ -89,7 +89,7 @@ class GithubProfile(Profile):
         paginated_list = []
         while True:
             response = requests.get(url, headers=self.headers)
-            paginated_list += json.loads(response.text)
+            paginated_list += response.json()
             url = response.links.get('next', {}).get('url')
             if not url:
                 break
