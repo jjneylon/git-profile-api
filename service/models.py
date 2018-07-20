@@ -20,9 +20,7 @@ class Profile:
         self.total_open_issues_count = 0
         self.total_size = 0
         self.languages_used = set()
-        self.languages_used_count = 0
         self.repo_topics = set()
-        self.repo_topics_count = 0
 
     @property
     def default_headers(self):
@@ -112,9 +110,6 @@ class GithubProfile(Profile):
                 self.languages_used = self.languages_used.union({repo['language']})
             self.repo_topics = self.repo_topics.union(set(repo['topics']))
 
-        self.languages_used_count = len(self.languages_used)
-        self.repo_topics_count = len(self.repo_topics)
-
 
 class BitbucketProfile(Profile):
     @property
@@ -196,13 +191,11 @@ class BitbucketProfile(Profile):
             self.total_watcher_count += self.get_paginated_count(repo['links']['watchers']['href'])
             self.total_size += repo['size']
 
-            issues_link = repo['links'].get('issues')
+            issues_link = repo['links'].get('issues', {}).get('href')
             if issues_link:
                 self.total_open_issues_count += self.get_paginated_count(issues_link)
             if repo['language']:
                 self.languages_used = self.languages_used.union({repo['language']})
-
-        self.languages_used_count = len(self.languages_used)
 
 
 class ConsolidatedProfile:
@@ -213,32 +206,24 @@ class ConsolidatedProfile:
 
     @property
     def dict(self):
-        """ A dictionary of all data consolidated from both profiles.
+        """ A dictionary of all data consolidated from both profiles """
 
-        Loops through count attributes and adds them.
-        Loops through set attributes and converts to a list of their union
-        """
         response_dict = {
             'github_username': self.github_profile.username,
             'bitbucket_username': self.bitbucket_profile.username,
+            'languages_used': list(self.github_profile.languages_used.union(self.bitbucket_profile.languages_used)),
+            'repo_topics': list(self.github_profile.repo_topics.union(self.bitbucket_profile.repo_topics)),
+            'total_repo_count': self.github_profile.total_repo_count + self.bitbucket_profile.total_repo_count,
+            'total_watcher_count': self.github_profile.total_watcher_count + self.bitbucket_profile.total_watcher_count,
+            'total_follower_count': self.github_profile.total_follower_count + self.bitbucket_profile.total_follower_count,
+            'total_stars_received_count': self.github_profile.total_stars_received_count + self.bitbucket_profile.total_stars_received_count,
+            'total_stars_given_count': self.github_profile.total_stars_given_count + self.bitbucket_profile.total_stars_given_count,
+            'total_open_issues_count': self.github_profile.total_open_issues_count + self.bitbucket_profile.total_open_issues_count,
+            'total_size': self.github_profile.total_size + self.bitbucket_profile.total_size,
         }
-        for attr in (
-            'total_repo_count',
-            'total_watcher_count',
-            'total_follower_count',
-            'total_stars_received_count',
-            'total_stars_given_count',
-            'total_open_issues_count',
-            'total_size',
-            'languages_used_count',
-            'repo_topics_count',
-        ):
-            response_dict[attr] = getattr(self.github_profile, attr) + getattr(self.bitbucket_profile, attr)
-
-        for attr in (
-            'languages_used',
-            'repo_topics',
-        ):
-            response_dict[attr] = list(getattr(self.github_profile, attr).union(getattr(self.bitbucket_profile, attr)))
+        response_dict.update({
+            'languages_used_count': len(response_dict['languages_used']),
+            'repo_topics_count': len(response_dict['repo_topics']),
+        })
 
         return response_dict
